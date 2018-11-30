@@ -36,7 +36,7 @@ usage() {
         echo "$1"
         echo;
     fi
-    echo "Usage: xspec [-t|-q|-s|-c|-j|-catalog file|-h] file [coverage]"
+    echo "Usage: xspec [-t|-q|-s|-c|-j|-catalog file|-p param=value|-h] file [coverage]"
     echo
     echo "  file           the XSpec document"
     echo "  -t             test an XSLT stylesheet (the default)"
@@ -45,6 +45,7 @@ usage() {
     echo "  -c             output test coverage report"
     echo "  -j             output JUnit report"
     echo "  -catalog file  use XML Catalog file to locate resources"
+    echo "  -p param=value pass parameter to Saxon"
     echo "  -h             display this help message"
     echo "  coverage       deprecated, use -c instead"
 }
@@ -208,6 +209,10 @@ while echo "$1" | grep -- ^- >/dev/null 2>&1; do
         -catalog)
             shift
             XML_CATALOG="$1";;
+        # Parameters
+        -p)
+            shift
+            SAXON_PARAMS="$SAXON_PARAMS $1";;
         # Help!
         -h)
             usage
@@ -307,6 +312,7 @@ if test -n "$SCHEMATRON"; then
     
     xquery -qs:"declare namespace output = 'http://www.w3.org/2010/xslt-xquery-serialization'; declare option output:method 'text'; declare function local:escape(\$v) { let \$w := if (matches(\$v,codepoints-to-string((91,92,115,93)))) then codepoints-to-string(34) else '' return concat(\$w, replace(\$v,codepoints-to-string((40,91,36,92,92,96,93,41)),codepoints-to-string((92,92,36,49))), \$w)}; string-join(for \$p in /*/*[local-name() = 'param'] return if (\$p/@select) then concat('?',\$p/@name,'=',local:escape(\$p/@select)) else concat(\$p/@name,'=',local:escape(\$p/string())),' ')" -s:"$XSPEC" >"$TEST_DIR/$TARGET_FILE_NAME-var.txt" || die "Error getting Schematron phase and parameters"
     SCH_PARAMS=`cat "$TEST_DIR/$TARGET_FILE_NAME-var.txt"`
+    SCH_PARAMS="$SAXON_PARAMS $SCH_PARAMS"
     echo Parameters: $SCH_PARAMS
     SCHUT=$XSPEC-compiled.xspec
     SCH_COMPILED=$(echo "$SCH" | sed 's:^file\:::')-compiled.xsl
@@ -354,12 +360,12 @@ if test -n "$XSLT"; then
         xslt "${saxon_custom_options_array[@]}" \
             -T:$COVERAGE_CLASS \
             -o:"$RESULT" -s:"$XSPEC" -xsl:"$COMPILED" \
-            -it:{http://www.jenitennison.com/xslt/xspec}main 2> "$COVERAGE_XML" \
+            -it:{http://www.jenitennison.com/xslt/xspec}main $SAXON_PARAMS 2> "$COVERAGE_XML" \
             || die "Error collecting test coverage data"
     else
         xslt "${saxon_custom_options_array[@]}" \
             -o:"$RESULT" -s:"$XSPEC" -xsl:"$COMPILED" \
-            -it:{http://www.jenitennison.com/xslt/xspec}main \
+            -it:{http://www.jenitennison.com/xslt/xspec}main $SAXON_PARAMS \
             || die "Error running the test suite"
     fi
 else
@@ -368,11 +374,11 @@ else
         echo "Collecting test coverage data; suppressing progress report..."
         xquery "${saxon_custom_options_array[@]}" \
             -T:$COVERAGE_CLASS \
-            -o:"$RESULT" -s:"$XSPEC" -q:"$COMPILED" 2> "$COVERAGE_XML" \
+            -o:"$RESULT" -s:"$XSPEC" -q:"$COMPILED" $SAXON_PARAMS 2> "$COVERAGE_XML" \
             || die "Error collecting test coverage data"
     else
         xquery "${saxon_custom_options_array[@]}" \
-            -o:"$RESULT" -s:"$XSPEC" -q:"$COMPILED" \
+            -o:"$RESULT" -s:"$XSPEC" -q:"$COMPILED" $SAXON_PARAMS \
             || die "Error running the test suite"
     fi
 fi
